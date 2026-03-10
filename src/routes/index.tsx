@@ -46,6 +46,7 @@ create table if not exists public.comments (
   slug text not null,
   author text not null,
   content text not null,
+  parent_id uuid null references public.comments(id) on delete cascade,
   created_at timestamptz not null default now()
 );
 
@@ -59,8 +60,16 @@ using (true);
 create policy "Insert comments"
 on public.comments
 for insert
-with check (char_length(author) <= 80 and char_length(content) <= 2000);`}
+with check (
+  char_length(author) <= 80
+  and char_length(content) <= 2000
+  and (parent_id is null or parent_id <> id)
+);`}
           </pre>
+
+          <p className="text-xs text-amber-300">
+            Jika tabel <code>comments</code> sudah terlanjur ada, jalankan migrasi: <code>alter table public.comments add column if not exists parent_id uuid null references public.comments(id) on delete cascade;</code>
+          </p>
         </section>
 
         <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-3">
