@@ -25,6 +25,7 @@ create table if not exists public.comments (
   slug text not null,
   author text not null,
   content text not null,
+  parent_id uuid null references public.comments(id) on delete cascade,
   created_at timestamptz not null default now()
 );
 
@@ -38,7 +39,11 @@ using (true);
 create policy "Insert comments"
 on public.comments
 for insert
-with check (char_length(author) <= 80 and char_length(content) <= 2000);
+with check (
+  char_length(author) <= 80
+  and char_length(content) <= 2000
+  and (parent_id is null or parent_id <> id)
+);
 ```
 
 3. Ambil credential dari **Project Settings → API**:
@@ -53,6 +58,16 @@ VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```
 
 > Simpan **service_role key** hanya di backend/server. Jangan expose ke browser.
+
+### Migrasi jika tabel `comments` sudah terlanjur dibuat
+
+Jalankan SQL berikut agar fitur reply aktif tanpa reset data:
+
+```sql
+alter table public.comments
+add column if not exists parent_id uuid null references public.comments(id) on delete cascade;
+```
+
 
 ## Embed ke project lain
 

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { type FormEvent, type ReactNode } from 'react'
 
 type CommentItem = {
   id: string
@@ -7,6 +7,7 @@ type CommentItem = {
   content: string
   created_at: string
   slug?: string
+  parent_id: string | null
 }
 
 type CommentEmbedProps = {
@@ -27,6 +28,84 @@ type SupabaseUser = {
   [key: string]: any
 }
 
+const PAGE_SIZE = 10
+
+function isValidHttpUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function renderInline(input: string): ReactNode[] {
+  const parts = input.split(/(\|\|[^|]+\|\||!?\[[^\]]*\]\([^\)]+\)|https?:\/\/\S+)/g)
+
+  return parts
+    .filter(Boolean)
+    .map((part, index) => {
+      if (/^\|\|[^|]+\|\|$/.test(part)) {
+        return (
+          <span key={index} className="rounded bg-slate-700 px-1 text-slate-200">
+            {part.slice(2, -2)}
+          </span>
+        )
+      }
+
+      const imageMatch = part.match(/^!\[([^\]]*)\]\(([^\)]+)\)$/)
+      if (imageMatch) {
+        const alt = imageMatch[1] || 'gambar komentar'
+        const src = imageMatch[2].trim()
+        if (isValidHttpUrl(src)) {
+          return (
+            <img
+              key={index}
+              src={src}
+              alt={alt}
+              className="max-h-72 w-auto rounded-md border border-slate-700 my-2"
+              loading="lazy"
+            />
+          )
+        }
+      }
+
+      const linkMatch = part.match(/^\[([^\]]+)\]\(([^\)]+)\)$/)
+      if (linkMatch && isValidHttpUrl(linkMatch[2].trim())) {
+        return (
+          <a
+            key={index}
+            href={linkMatch[2].trim()}
+            target="_blank"
+            rel="noreferrer"
+            className="text-cyan-300 underline"
+          >
+            {linkMatch[1]}
+          </a>
+        )
+      }
+
+      if (/^https?:\/\//.test(part) && isValidHttpUrl(part)) {
+        return (
+          <a key={index} href={part} target="_blank" rel="noreferrer" className="text-cyan-300 underline">
+            {part}
+          </a>
+        )
+      }
+
+      return <span key={index}>{part}</span>
+    })
+}
+
+function renderCommentContent(content: string) {
+  return content.split('\n').map((line, idx, arr) => (
+    <div key={`${line}-${idx}`}>
+      {renderInline(line)}
+      {idx < arr.length - 1 ? <br /> : null}
+    </div>
+  ))
+}
+
 export default function CommentEmbed({
   supabaseUrl,
   supabaseAnonKey,
@@ -42,6 +121,9 @@ export default function CommentEmbed({
   const [authLoading, setAuthLoading] = useState(false)
   const [error, setError] = useState('')
   const [authError, setAuthError] = useState('')
+  const [replyTarget, setReplyTarget] = useState<CommentItem | null>(null)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [openReplies, setOpenReplies] = useState<Record<string, boolean>>({})
   const clientRef = useRef<any>(null)
 
   useEffect(() => {
@@ -84,7 +166,7 @@ export default function CommentEmbed({
 
       const { data, error: fetchError } = await client
         .from('comments')
-        .select('id, author, content, created_at')
+        .select('id, author, content, created_at, slug, parent_id')
         .eq('site', site)
         .eq('slug', slug)
         .order('created_at', { ascending: true })
@@ -139,6 +221,21 @@ export default function CommentEmbed({
     user?.user_metadata?.full_name ?? user?.email ?? user?.id ?? ''
   const displayName = googleDisplayName || 'Pengguna'
 
+  const { topLevelComments, repliesByParent } = useMemo(() => {
+    const topLevel = comments.filter((comment) => !comment.parent_id)
+    const replies = comments.reduce<Record<string, CommentItem[]>>((acc, comment) => {
+      if (!comment.parent_id) return acc
+      if (!acc[comment.parent_id]) acc[comment.parent_id] = []
+      acc[comment.parent_id].push(comment)
+      return acc
+    }, {})
+
+    return { topLevelComments: topLevel, repliesByParent: replies }
+  }, [comments])
+
+  const visibleTopLevelComments = topLevelComments.slice(0, visibleCount)
+  const hasMoreTopLevel = topLevelComments.length > visibleCount
+
   useEffect(() => {
     if (user) {
       setAuthor(googleDisplayName)
@@ -174,6 +271,25 @@ export default function CommentEmbed({
     await clientRef.current.auth.signOut()
   }
 
+  function insertAtCursor(before: string, after = '') {
+    const textarea = document.getElementById('comment-editor') as HTMLTextAreaElement | null
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const selected = content.slice(start, end)
+    const replacement = `${before}${selected}${after}`
+    const newValue = `${content.slice(0, start)}${replacement}${content.slice(end)}`
+
+    setContent(newValue)
+
+    requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.selectionStart = start + before.length
+      textarea.selectionEnd = start + before.length + selected.length
+    })
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -194,8 +310,9 @@ export default function CommentEmbed({
         slug,
         author: author.trim(),
         content: content.trim(),
+        parent_id: replyTarget?.id ?? null,
       })
-      .select('id, author, content, created_at, slug')
+      .select('id, author, content, created_at, slug, parent_id')
       .single()
 
     setLoading(false)
@@ -210,6 +327,7 @@ export default function CommentEmbed({
     }
 
     setContent('')
+    setReplyTarget(null)
   }
 
   return (
@@ -265,14 +383,38 @@ export default function CommentEmbed({
           disabled={!user}
           readOnly={!!user}
         />
+
+        {replyTarget ? (
+          <div className="text-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 flex justify-between items-center">
+            <span>
+              Membalas <strong>{replyTarget.author}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => setReplyTarget(null)}
+              className="text-slate-300 hover:text-white"
+            >
+              Batal balas
+            </button>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => insertAtCursor('||', '||')} className="text-xs px-2 py-1 rounded border border-slate-700 hover:border-slate-500" disabled={!user}>Spoiler</button>
+          <button type="button" onClick={() => insertAtCursor('[teks](', ')')} className="text-xs px-2 py-1 rounded border border-slate-700 hover:border-slate-500" disabled={!user}>Link</button>
+          <button type="button" onClick={() => insertAtCursor('![deskripsi](', ')')} className="text-xs px-2 py-1 rounded border border-slate-700 hover:border-slate-500" disabled={!user}>Image URL</button>
+        </div>
+
         <textarea
+          id="comment-editor"
           value={content}
           onChange={(event) => setContent(event.target.value)}
-          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 min-h-24"
-          placeholder="Tulis komentar..."
+          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 min-h-28"
+          placeholder="Tulis komentar... gunakan ||spoiler|| atau ![alt](url)"
           required
           disabled={!user}
         />
+        <p className="text-xs text-slate-400">Format didukung: spoiler <code>||teks||</code>, link <code>[judul](https://...)</code>, image <code>![alt](https://...)</code>.</p>
         <button
           type="submit"
           disabled={
@@ -280,7 +422,7 @@ export default function CommentEmbed({
           }
           className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-800"
         >
-          {loading ? 'Mengirim...' : 'Kirim komentar'}
+          {loading ? 'Mengirim...' : replyTarget ? 'Kirim balasan' : 'Kirim komentar'}
         </button>
       </form>
 
@@ -290,22 +432,75 @@ export default function CommentEmbed({
         {comments.length === 0 ? (
           <p className="text-slate-400">Belum ada komentar.</p>
         ) : (
-          comments.map((comment) => (
-            <article
-              key={comment.id}
-              className="bg-slate-800 border border-slate-700 rounded-lg p-3"
-            >
-              <div className="flex justify-between gap-2 mb-2">
-                <strong>{comment.author}</strong>
-                <time className="text-xs text-slate-400">
-                  {new Date(comment.created_at).toLocaleString()}
-                </time>
-              </div>
-              <p className="text-slate-200 whitespace-pre-wrap">{comment.content}</p>
-            </article>
-          ))
+          visibleTopLevelComments.map((comment) => {
+            const replies = repliesByParent[comment.id] ?? []
+            const showReplies = !!openReplies[comment.id]
+
+            return (
+              <article
+                key={comment.id}
+                className="bg-slate-800 border border-slate-700 rounded-lg p-3"
+              >
+                <div className="flex justify-between gap-2 mb-2">
+                  <strong>{comment.author}</strong>
+                  <time className="text-xs text-slate-400">
+                    {new Date(comment.created_at).toLocaleString()}
+                  </time>
+                </div>
+                <div className="text-slate-200 whitespace-pre-wrap">{renderCommentContent(comment.content)}</div>
+                <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                  <button
+                    type="button"
+                    className="text-cyan-300 hover:text-cyan-200"
+                    onClick={() => setReplyTarget(comment)}
+                  >
+                    Balas
+                  </button>
+                  {replies.length > 0 ? (
+                    <button
+                      type="button"
+                      className="text-slate-300 hover:text-white"
+                      onClick={() =>
+                        setOpenReplies((prev) => ({ ...prev, [comment.id]: !prev[comment.id] }))
+                      }
+                    >
+                      {showReplies ? 'Sembunyikan balasan' : `Lihat balasan (${replies.length})`}
+                    </button>
+                  ) : null}
+                </div>
+
+                {showReplies && replies.length > 0 ? (
+                  <div className="mt-3 space-y-2 border-l border-slate-600 pl-3">
+                    {replies.map((reply) => (
+                      <div key={reply.id} className="rounded-md bg-slate-900/70 border border-slate-700 p-2">
+                        <div className="flex justify-between gap-2 mb-1">
+                          <strong className="text-sm">{reply.author}</strong>
+                          <time className="text-xs text-slate-400">
+                            {new Date(reply.created_at).toLocaleString()}
+                          </time>
+                        </div>
+                        <div className="text-sm text-slate-200 whitespace-pre-wrap">{renderCommentContent(reply.content)}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            )
+          })
         )}
       </div>
+
+      {hasMoreTopLevel ? (
+        <div className="mt-5">
+          <button
+            type="button"
+            className="px-4 py-2 rounded-lg border border-slate-600 hover:border-slate-400"
+            onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+          >
+            Load more
+          </button>
+        </div>
+      ) : null}
     </section>
   )
 }
