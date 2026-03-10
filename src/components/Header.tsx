@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import { useState } from 'react'
-import { Home, Menu, X } from 'lucide-react'
+import { Home, MessageCircle, Menu, X } from 'lucide-react'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
@@ -57,9 +57,17 @@ export default function Header() {
             <span className="font-medium">Home</span>
           </Link>
 
-          {/* Demo Links Start */}
 
-          {/* Demo Links End */}
+          <Link
+            to="/"
+            hash="demo"
+            onClick={() => setIsOpen(false)}
+            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
+          >
+            <MessageCircle size={20} />
+            <span className="font-medium">Demo Komentar</span>
+          </Link>
+
         </nav>
       </aside>
     </>

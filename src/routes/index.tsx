@@ -1,118 +1,96 @@
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  Zap,
-  Server,
-  Route as RouteIcon,
-  Shield,
-  Waves,
-  Sparkles,
-} from 'lucide-react'
+import CommentEmbed from '../components/CommentEmbed'
 
 export const Route = createFileRoute('/')({ component: App })
 
 function App() {
-  const features = [
-    {
-      icon: <Zap className="w-12 h-12 text-cyan-400" />,
-      title: 'Powerful Server Functions',
-      description:
-        'Write server-side code that seamlessly integrates with your client components. Type-safe, secure, and simple.',
-    },
-    {
-      icon: <Server className="w-12 h-12 text-cyan-400" />,
-      title: 'Flexible Server Side Rendering',
-      description:
-        'Full-document SSR, streaming, and progressive enhancement out of the box. Control exactly what renders where.',
-    },
-    {
-      icon: <RouteIcon className="w-12 h-12 text-cyan-400" />,
-      title: 'API Routes',
-      description:
-        'Build type-safe API endpoints alongside your application. No separate backend needed.',
-    },
-    {
-      icon: <Shield className="w-12 h-12 text-cyan-400" />,
-      title: 'Strongly Typed Everything',
-      description:
-        'End-to-end type safety from server to client. Catch errors before they reach production.',
-    },
-    {
-      icon: <Waves className="w-12 h-12 text-cyan-400" />,
-      title: 'Full Streaming Support',
-      description:
-        'Stream data from server to client progressively. Perfect for AI applications and real-time updates.',
-    },
-    {
-      icon: <Sparkles className="w-12 h-12 text-cyan-400" />,
-      title: 'Next Generation Ready',
-      description:
-        'Built from the ground up for modern web applications. Deploy anywhere JavaScript runs.',
-    },
-  ]
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? 'https://YOUR_PROJECT.supabase.co'
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? 'YOUR_SUPABASE_ANON_KEY'
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
-      <section className="relative py-20 px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10"></div>
-        <div className="relative max-w-5xl mx-auto">
-          <div className="flex items-center justify-center gap-6 mb-6">
-            <img
-              src="/tanstack-circle-logo.png"
-              alt="TanStack Logo"
-              className="w-24 h-24 md:w-32 md:h-32"
-            />
-            <h1 className="text-6xl md:text-7xl font-black text-white [letter-spacing:-0.08em]">
-              <span className="text-gray-300">TANSTACK</span>{' '}
-              <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                START
-              </span>
-            </h1>
-          </div>
-          <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-light">
-            The framework for next generation AI applications
+    <main className="min-h-screen bg-slate-950 text-slate-100 px-6 py-10">
+      <div className="max-w-5xl mx-auto space-y-8">
+        <section className="space-y-4">
+          <h1 className="text-4xl font-black">Komentarku Embed (TanStack Start + Supabase)</h1>
+          <p className="text-slate-300">
+            Komponen komentar realtime yang bisa di-embed ke project React, NestJS,
+            Next.js, atau web biasa.
           </p>
-          <p className="text-lg text-gray-400 max-w-3xl mx-auto mb-8">
-            Full-stack framework powered by TanStack Router for React and Solid.
-            Build modern applications with server functions, streaming, and type
-            safety.
-          </p>
-          <div className="flex flex-col items-center gap-4">
-            <a
-              href="https://tanstack.com/start"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-8 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-cyan-500/50"
-            >
-              Documentation
-            </a>
-            <p className="text-gray-400 text-sm mt-2">
-              Begin your TanStack Start journey by editing{' '}
-              <code className="px-2 py-1 bg-slate-700 rounded text-cyan-400">
-                /src/routes/index.tsx
-              </code>
-            </p>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="py-16 px-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 hover:border-cyan-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/10"
-            >
-              <div className="mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-semibold text-white mb-3">
-                {feature.title}
-              </h3>
-              <p className="text-gray-400 leading-relaxed">
-                {feature.description}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-3">
+          <h2 className="text-2xl font-bold">Cara setup Supabase</h2>
+          <ol className="list-decimal pl-5 space-y-2 text-slate-300">
+            <li>Buat project baru di Supabase.</li>
+            <li>
+              Buka <code>SQL Editor</code> lalu jalankan SQL di bawah untuk tabel dan RLS.
+            </li>
+            <li>
+              Ambil <code>Project URL</code> dan <code>anon public key</code> dari
+              <code> Project Settings &gt; API</code>.
+            </li>
+            <li>
+              Simpan key di file <code>.env</code>:
+              <pre className="bg-slate-950 border border-slate-700 rounded p-3 mt-2 overflow-x-auto text-sm">
+{`VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY`}
+              </pre>
+            </li>
+          </ol>
+          <pre className="bg-slate-950 border border-slate-700 rounded p-3 overflow-x-auto text-sm">
+{`create extension if not exists "pgcrypto";
+
+create table if not exists public.comments (
+  id uuid primary key default gen_random_uuid(),
+  site text not null,
+  slug text not null,
+  author text not null,
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.comments enable row level security;
+
+create policy "Read comments"
+on public.comments
+for select
+using (true);
+
+create policy "Insert comments"
+on public.comments
+for insert
+with check (char_length(author) <= 80 and char_length(content) <= 2000);`}
+          </pre>
+        </section>
+
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-3">
+          <h2 className="text-2xl font-bold">Cara embed ke project lain</h2>
+          <p className="text-slate-300">Tambahkan container lalu script ini:</p>
+          <pre className="bg-slate-950 border border-slate-700 rounded p-3 overflow-x-auto text-sm">
+{`<div id="komentarku-thread"></div>
+<script
+  type="module"
+  src="https://YOUR_DOMAIN/comment-embed.js"
+  data-host="my-product"
+  data-slug="artikel-pertama"
+  data-supabase-url="https://YOUR_PROJECT.supabase.co"
+  data-supabase-anon-key="YOUR_SUPABASE_ANON_KEY"
+></script>`}
+          </pre>
+          <p className="text-sm text-slate-400">
+            Untuk React/NestJS cukup tempel snippet HTML tersebut di layout/view
+            (NestJS SSR, EJS, Handlebars, dsb). Script bekerja framework-agnostic.
+          </p>
+        </section>
+
+        <CommentEmbed
+          supabaseUrl={supabaseUrl}
+          supabaseAnonKey={supabaseAnonKey}
+          site="komentarku-demo"
+          slug="homepage"
+          title="Demo live comment widget"
+        />
+      </div>
+    </main>
   )
 }
