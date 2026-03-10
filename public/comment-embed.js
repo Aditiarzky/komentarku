@@ -17,7 +17,10 @@ if (!site || !slug || !supabaseUrl || !supabaseAnonKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { persistSession: false },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
 })
 
 root.innerHTML = `
@@ -30,9 +33,20 @@ root.innerHTML = `
     .kk-meta{font-size:12px;color:#94a3b8;display:flex;justify-content:space-between;margin-bottom:6px}
     .kk-empty{color:#94a3b8}
     .kk-error{color:#fca5a5;font-size:13px;margin:8px 0}
+    .kk-auth{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+    .kk-auth-status{font-size:13px;color:#cbd5f5}
+    .kk-auth-actions{display:flex;flex-wrap:wrap;gap:8px}
+    .kk-btn-ghost{background:transparent;border:1px solid #475569;color:#e2e8f0}
   </style>
   <section class="kk-wrap">
     <h3 class="kk-title">Komentar</h3>
+    <div class="kk-auth" id="kk-auth">
+      <div class="kk-auth-status" id="kk-auth-status">Silakan masuk dengan Google agar bisa komentar.</div>
+      <div class="kk-auth-actions">
+        <button class="kk-btn" id="kk-login" type="button">Masuk dengan Google</button>
+        <button class="kk-btn kk-btn-ghost" id="kk-logout" type="button" style="display:none">Keluar</button>
+      </div>
+    </div>
     <form id="kk-form">
       <input class="kk-input" id="kk-author" placeholder="Nama" required />
       <textarea class="kk-textarea" id="kk-content" placeholder="Tulis komentar..." required></textarea>
@@ -48,6 +62,10 @@ const authorInput = root.querySelector('#kk-author')
 const contentInput = root.querySelector('#kk-content')
 const list = root.querySelector('#kk-list')
 const errorEl = root.querySelector('#kk-error')
+const loginButton = root.querySelector('#kk-login')
+const logoutButton = root.querySelector('#kk-logout')
+const authStatus = root.querySelector('#kk-auth-status')
+const submitButton = root.querySelector('#kk-submit')
 
 function renderComments(comments) {
   if (!comments.length) {
@@ -91,6 +109,53 @@ function escapeHtml(value) {
 }
 
 let comments = []
+let currentSession = null
+
+function setFormEnabled(enabled) {
+  if (contentInput) contentInput.disabled = !enabled
+  if (submitButton) submitButton.disabled = !enabled
+}
+
+function updateAuthDisplay(session) {
+  currentSession = session
+  const user = session?.user
+
+  if (user) {
+    const submissionName =
+      user.user_metadata?.full_name ?? user.email ?? user.id ?? ''
+    const displayName = submissionName || 'Pengguna'
+
+    if (authStatus) {
+      authStatus.textContent = `Masuk sebagai ${displayName}`
+    }
+    if (loginButton) loginButton.style.display = 'none'
+    if (logoutButton) logoutButton.style.display = 'inline-flex'
+    if (authorInput) {
+      authorInput.value = submissionName
+      authorInput.disabled = false
+      authorInput.readOnly = true
+    }
+    setFormEnabled(true)
+  } else {
+    if (authStatus) {
+      authStatus.textContent = 'Belum masuk. Silakan gunakan Google untuk komentar.'
+    }
+    if (loginButton) loginButton.style.display = 'inline-flex'
+    if (logoutButton) logoutButton.style.display = 'none'
+    if (authorInput) {
+      authorInput.value = ''
+      authorInput.disabled = true
+      authorInput.readOnly = false
+    }
+    setFormEnabled(false)
+  }
+}
+
+setFormEnabled(false)
+if (authorInput) {
+  authorInput.disabled = true
+  authorInput.readOnly = false
+}
 
 async function loadInitialComments() {
   const { data, error } = await supabase
@@ -116,18 +181,32 @@ form.addEventListener('submit', async (event) => {
   const author = authorInput.value.trim()
   const content = contentInput.value.trim()
 
+  if (!currentSession?.user) {
+    showError('Silakan masuk dengan Google terlebih dahulu.')
+    return
+  }
+
   if (!author || !content) return
 
-  const { error } = await supabase.from('comments').insert({
-    site,
-    slug,
-    author,
-    content,
-  })
+  const { data: insertedData, error } = await supabase
+    .from('comments')
+    .insert({
+      site,
+      slug,
+      author,
+      content,
+    })
+    .select('id, author, content, created_at, slug')
+    .single()
 
   if (error) {
     showError(error.message)
     return
+  }
+
+  if (insertedData) {
+    comments.push(insertedData)
+    renderComments(comments)
   }
 
   contentInput.value = ''
@@ -154,3 +233,39 @@ supabase
   .subscribe()
 
 loadInitialComments()
+
+supabase
+  .auth
+  .getSession()
+  .then(({ data: { session } }) => {
+    updateAuthDisplay(session)
+  })
+  .catch((err) => showError(err.message))
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  updateAuthDisplay(session)
+})
+
+loginButton?.addEventListener('click', async () => {
+  if (!loginButton) return
+  loginButton.disabled = true
+  showError()
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      queryParams: {
+        prompt: 'select_account',
+      },
+    },
+  })
+  loginButton.disabled = false
+
+  if (error) {
+    showError(error.message)
+  }
+})
+
+logoutButton?.addEventListener('click', async () => {
+  showError()
+  await supabase.auth.signOut()
+})
